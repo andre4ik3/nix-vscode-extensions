@@ -5,7 +5,39 @@
   ";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/674c2b09c59a220204350ced584cadaacee30038";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    cache-nix-action = {
+      url = "github:nix-community/cache-nix-action";
+      flake = false;
+    };
+    systems.url = "github:nix-systems/default";
+    flake-utils = {
+      url = "github:numtide/flake-utils";
+      inputs.systems.follows = "systems";
+    };
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
+    devshell = {
+      url = "github:deemp/devshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
+    flake-compat = {
+      url = "github:edolstra/flake-compat";
+      flake = false;
+    };
+    nix-unit = {
+      url = "github:nix-community/nix-unit";
+      inputs.flake-parts.follows = "flake-parts";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.treefmt-nix.follows = "treefmt-nix";
+    };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -15,9 +47,9 @@
       ...
     }:
     let
-      nix-dev = import ./nix-dev;
+      nix-dev = { inherit inputs; };
 
-      inputsCombined = nix-dev.inputs // inputs;
+      inputsCombined = inputs;
 
       systemPlatform = {
         x86_64-linux = "linux-x64";
