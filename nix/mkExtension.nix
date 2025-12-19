@@ -7,7 +7,6 @@
 
 {
   pkgs,
-  pkgsWithFixes,
   system,
 }:
 let
@@ -45,43 +44,7 @@ let
 
   extensionsRemoved = (import ./removed.nix).${system} or [ ];
 
-  # Similar to callPackageWith/callPackage, but without makeOverridable.
-  #
-  # In `nixpkgs`, `pkgs.lib.callPackageWith` uses `pkgs.lib.makeOverridable`.
-  # We need `callPackageWith` to use a custom `makeOverridable`
-  # to handle the case when in an expression for an extension in `nixpkgs`,
-  # `pkgs.vscode-utils.buildVscodeMarketplaceExtension`
-  # takes a function, not an attrset.
-  #
-  # Adapted from
-  # https://github.com/NixOS/nixpkgs/blob/b044ad6e5e92e70d7a7723864b0ab7a6c25bafda/pkgs/development/beam-modules/lib.nix#L9
-  callPackageWith =
-    autoArgs: fn: args:
-    let
-      f = if lib.isFunction fn then fn else import fn;
-      auto = builtins.intersectAttrs (lib.functionArgs f) autoArgs;
-    in
-    f (auto // args);
-
-  callPackage = callPackageWith pkgs';
-
-  # TODO find a cleaner way to get the store path of nixpkgs from given pkgs
-  pathNixpkgs =
-    if pkgsWithFixes ? outPath then
-      pkgsWithFixes.outPath
-    else
-      lib.trivial.pipe pkgsWithFixes.hello.inputDerivation._derivation_original_args [
-        builtins.tail
-        builtins.head
-        builtins.dirOf
-        builtins.dirOf
-        builtins.dirOf
-        builtins.dirOf
-      ];
-
-  extensionsNixpkgs =
-    callPackage "${pathNixpkgs}/pkgs/applications/editors/vscode/extensions/default.nix"
-      { config.allowAliases = false; };
+  extensionsNixpkgs = pkgs.vscode-extensions;
 
   extensionsProblematic =
     # Problem:
@@ -106,48 +69,28 @@ let
       "vscode-icons-team.vscode-icons"
     ];
 
-  pathSpecial = {
-    ms-ceintl = "language-packs.nix";
-    wakatime = "WakaTime.vscode-wakatime";
-  };
-
   mkExtensionNixpkgs = builtins.mapAttrs (
     publisher:
     builtins.mapAttrs (
       name: extension:
       let
         extensionId = "${publisher}.${name}";
+        override = extension.override or (abort "The extension '${publisher}.${name}' doesn't have an 'override' attribute.");
       in
       if builtins.elem extensionId extensionsRemoved then
         _: { vscodeExtPublisher = publisher; }
       else
-        let
-          subPath = pathSpecial.${publisher} or extensionId;
-
-          path = "${pathNixpkgs}/pkgs/applications/editors/vscode/extensions/${subPath}";
-
-          extension' =
-            if builtins.pathExists path then
-              let
-                extension'' = callPackage path { };
-              in
-              if publisher == "ms-ceintl" then extension''.${name} else extension''
-            else
-              extension;
-        in
         { mktplcRef, vsix }@extensionConfig:
+        let
+          args = if builtins.elem extensionId extensionsBuildVscodeExtension then
+            { inherit vsix; }
+          else
+            extensionConfig;
+        in
         if builtins.elem extensionId extensionsProblematic then
           buildVscodeMarketplaceExtension extensionConfig
         else
-          (extension'.override
-            or (abort "The extension '${publisher}.${name}' doesn't have an 'override' attribute.")
-          )
-            (
-              if builtins.elem extensionId extensionsBuildVscodeExtension then
-                { inherit vsix; }
-              else
-                extensionConfig
-            )
+          override (builtins.intersectAttrs (override.__functionArgs) args)
     )
   ) extensionsNixpkgs;
 
