@@ -43,57 +43,6 @@ let
   mkExtensionLocal = applyMkExtension (import ../extensions { pkgs = pkgs'; });
 
   extensionsRemoved = (import ./removed.nix).${system} or [ ];
-
-  extensionsNixpkgs = pkgs.vscode-extensions;
-
-  extensionsProblematic =
-    # Problem:
-    # Some arguments of the function that produces a derivation
-    # are provided in the `let .. in` expression before the call to that function
-
-    # TODO make a PR to nixpkgs to simplify overriding for these extensions
-    [
-      "anweber.vscode-httpyac"
-      "chenglou92.rescript-vscode"
-      # Wait for https://github.com/NixOS/nixpkgs/pull/383013 to be merged
-      "vadimcn.vscode-lldb"
-      "rust-lang.rust-analyzer"
-    ];
-
-  extensionsBuildVscodeExtension =
-    # In Nixpkgs, these packages are constructed
-    # using the `buildVscodeExtension` function.
-    [
-      "kilocode.kilo-code"
-      "eamodio.gitlens"
-      "vscode-icons-team.vscode-icons"
-    ];
-
-  mkExtensionNixpkgs = builtins.mapAttrs (
-    publisher:
-    builtins.mapAttrs (
-      name: extension:
-      let
-        extensionId = "${publisher}.${name}";
-        override = extension.override or (abort "The extension '${publisher}.${name}' doesn't have an 'override' attribute.");
-      in
-      if builtins.elem extensionId extensionsRemoved then
-        _: { vscodeExtPublisher = publisher; }
-      else
-        { mktplcRef, vsix }@extensionConfig:
-        let
-          args = if builtins.elem extensionId extensionsBuildVscodeExtension then
-            { inherit vsix; }
-          else
-            extensionConfig;
-        in
-        if builtins.elem extensionId extensionsProblematic then
-          buildVscodeMarketplaceExtension extensionConfig
-        else
-          override (builtins.intersectAttrs (override.__functionArgs) args)
-    )
-  ) extensionsNixpkgs;
-
   chooseMkExtension =
     self:
     {
@@ -120,7 +69,6 @@ let
     extension;
 in
 builtins.foldl' lib.attrsets.recursiveUpdate { } [
-  mkExtensionNixpkgs
   mkExtensionLocal
   { __functor = chooseMkExtension; }
 ]
